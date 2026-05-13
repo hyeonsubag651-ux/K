@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Scripture Explorer</title>
+    <style>
+        :root { --bible: #2e7d32; --quran: #00695c; --hindu: #ef6c00; --bg: #fdfcfb; }
+        body { font-family: 'Nanum Myeongjo', serif; background: var(--bg); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .app-container { background: white; width: 100%; max-width: 500px; border-radius: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #ddd; }
+        .header { background: #455a64; color: white; padding: 25px; text-align: center; transition: 0.5s; }
+        .header h1 { margin: 0; font-size: 1.3rem; letter-spacing: 1px; }
+        
+        .selector-box { padding: 15px; background: #eee; display: flex; gap: 5px; }
+        .type-btn { flex: 1; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.8rem; background: #ccc; }
+        .type-btn.active { color: white; }
+        
+        .search-box { padding: 15px; display: flex; gap: 8px; border-bottom: 1px solid #eee; }
+        input { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; outline: none; }
+        .btn-search { background: #455a64; color: white; border: none; padding: 0 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        .result-container { padding: 25px; min-height: 250px; }
+        .verse-ref { font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: block; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .translated-text { font-size: 1.25rem; line-height: 1.8; color: #222; word-break: keep-all; }
+        .action-bar { padding: 15px; background: #fafafa; display: flex; gap: 10px; }
+        .btn-action { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="header" id="appHeader"><h1>세계 경전 통합 검색기</h1></div>
+    
+    <div class="selector-box">
+        <button class="type-btn active" id="btn-bible" onclick="setType('bible')">기독교</button>
+        <button class="type-btn" id="btn-quran" onclick="setType('quran')">이슬람</button>
+        <button class="type-btn" id="btn-hindu" onclick="setType('hindu')">힌두교</button>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="mainInput" placeholder="예: 요한 3:16 / 2:255 / 1:1">
+        <button class="btn-search" id="searchBtn" onclick="fetchScripture()">검색</button>
+    </div>
+
+    <div id="resultView" class="result-container">
+        <div style="text-align:center; color:#999; margin-top:50px;">경전을 선택하고 구절을 입력하세요.</div>
+    </div>
+
+    <div class="action-bar">
+        <button class="btn-action" onclick="copyText()">번역 내용 복사</button>
+    </div>
+</div>
+
+<script>
+    let currentType = 'bible';
+    const config = {
+        bible: { color: '#2e7d32', placeholder: '예: 창세기 1:1', map: {"창세기":"Genesis", "요한복음":"John", "마태복음":"Matthew"} },
+        quran: { color: '#00695c', placeholder: '예: 1:1 (장:절 숫자입력)' },
+        hindu: { color: '#ef6c00', placeholder: '예: 1:1 (장:절 숫자입력)' }
+    };
+
+    function setType(type) {
+        currentType = type;
+        document.querySelectorAll('.type-btn').forEach(btn => btn.classList.remove('active', 'active-style'));
+        const activeBtn = document.getElementById(`btn-${type}`);
+        activeBtn.classList.add('active');
+        activeBtn.style.backgroundColor = config[type].color;
+        document.getElementById('appHeader').style.backgroundColor = config[type].color;
+        document.getElementById('searchBtn').style.backgroundColor = config[type].color;
+        document.getElementById('mainInput').placeholder = config[config[type].placeholder];
+    }
+
+    async function fetchScripture() {
+        const input = document.getElementById('mainInput').value.trim();
+        const view = document.getElementById('resultView');
+        view.innerHTML = "가져오는 중...";
+
+        let apiUrl = "";
+        try {
+            if (currentType === 'bible') {
+                let q = input;
+                const match = input.match(/^([가-힣]+)\s*(\d+.*)$/);
+                if(match) q = `${config.bible.map[match[1]] || match[1]} ${match[2]}`;
+                apiUrl = `https://bible-api.com/${q}`;
+            } else if (currentType === 'quran') {
+                apiUrl = `https://api.alquran.cloud/v1/ayah/${input.replace(':','/')}/en.asad`;
+            } else {
+                apiUrl = `https://bhagavadgitaapi.in/slok/${input.replace(':','/')}`;
+            }
+
+            const res = await fetch(apiUrl);
+            const data = await res.json();
+            let rawText = currentType === 'bible' ? data.text : (currentType === 'quran' ? data.data.text : data.tran);
+            let ref = currentType === 'bible' ? data.reference : (currentType === 'quran' ? `Quran ${data.data.surah.englishName} ${input}` : `Gita ${input}`);
+
+            // 번역 호출
+            const tRes = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(rawText)}&langpair=en|ko`);
+            const tData = await tRes.json();
+
+            view.innerHTML = `<span class="verse-ref" style="color:${config[currentType].color}">${ref}</span>
+                              <div class="translated-text" id="resContent">${tData.responseData.translatedText}</div>`;
+        } catch(e) {
+            view.innerHTML = "데이터를 찾을 수 없습니다.";
+        }
+    }
+
+    function copyText() {
+        const content = document.getElementById('resContent')?.innerText;
+        if(content) {
+            navigator.clipboard.writeText(content);
+            alert("복사 완료!");
+        }
+    }
+    
+    // 초기 설정
+    setType('bible');
+</script>
+
+</body>
+</html>
+
